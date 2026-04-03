@@ -47,7 +47,7 @@ app:
       object-prefix: "papers"
   llm:
     # llm.api-key 为空时，会走“关键词规则兜底”（保证项目可跑）
-    api-key: "${DASHSCOPE_API_KEY:sk-a8b3bad9803f490bbdb6e41f3fa1d5a8}"
+    api-key: "${DASHSCOPE_API_KEY:}"
     endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1"
     model: qwen-plus
     # Qwen 返回类别列表的解析兜底：期望返回类似 ["CF Based","Graph Based"]
