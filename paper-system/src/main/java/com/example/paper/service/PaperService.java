@@ -48,7 +48,7 @@ public class PaperService {
     }
 
     @Transactional
-    public UploadResponse uploadPaper(MultipartFile file) throws IOException {
+    public UploadResponse uploadPaper(MultipartFile file, String codeUrl) throws IOException {
         String title = deriveTitle(file.getOriginalFilename());
         byte[] pdfBytes = file.getBytes();
         String text = pdfParserUtil.extractAbstractAndIntroduction(pdfBytes);
@@ -60,7 +60,7 @@ public class PaperService {
         Paper paper = new Paper();
         paper.setTitle(title);
         paper.setFilePath(storedFilePath);
-        paper.setCodeUrl(null);
+        paper.setCodeUrl(emptyToNull(codeUrl));
         paperRepository.save(paper); // 先拿到 paper.id
 
         attachCategories(paper, categories);

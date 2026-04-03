@@ -24,8 +24,11 @@ public class PaperController {
     }
 
     @PostMapping(value = "/papers/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public UploadResponse upload(@RequestParam("file") MultipartFile file) throws IOException {
-        return paperService.uploadPaper(file);
+    public UploadResponse upload(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(value = "code_url", required = false) String codeUrl
+    ) throws IOException {
+        return paperService.uploadPaper(file, codeUrl);
     }
 
     @GetMapping("/papers")
