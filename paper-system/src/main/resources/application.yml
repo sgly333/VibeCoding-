@@ -1,0 +1,55 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: paper-system
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 50MB
+  datasource:
+    # 需要你在本机安装 MySQL 并创建库：paper_system
+    url: jdbc:mysql://localhost:3306/paper_system?useSSL=false&serverTimezone=UTC
+    username: root
+    password: 123456
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  sql:
+    init:
+      mode: never
+
+app:
+  storage:
+    # oss：把上传的 PDF 真正 put 到 OSS
+    # local：把上传的 PDF 落到本地（用于本地开发）
+    type: oss
+    local-dir: uploads
+    # 可留空：系统会自动按 bucket + endpoint 组装为 https://<bucket>.<endpoint>
+    # 若你有 CDN 域名，填 CDN 域名（例如 https://cdn.xxx.com）
+    public-base-url: ""
+    oss:
+      # OSS endpoint，例如：https://oss-cn-hangzhou.aliyuncs.com
+      endpoint: "${OSS_ENDPOINT:oss-cn-beijing.aliyuncs.com}"
+      # bucket 名
+      bucket: "${OSS_BUCKET:rcpaper-system}"
+      # 建议用 RAM 用户 AccessKey；不要把真实密钥提交到代码仓库
+      access-key-id: "${OSS_ACCESS_KEY_ID:}"
+      access-key-secret: "${OSS_ACCESS_KEY_SECRET:}"
+      # 上传到 bucket 内的 object key 前缀
+      object-prefix: "papers"
+  llm:
+    # llm.api-key 为空时，会走“关键词规则兜底”（保证项目可跑）
+    api-key: "${DASHSCOPE_API_KEY:}"
+    endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    model: qwen-plus
+    # Qwen 返回类别列表的解析兜底：期望返回类似 ["CF Based","Graph Based"]
+    response-format: json_array
+

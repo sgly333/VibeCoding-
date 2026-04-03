@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>论文自动分类与代码关联系统</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; margin: 0; padding: 16px; background: #f6f7fb; }
+    .container { max-width: 1200px; margin: 0 auto; }
+    .card { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 16px; box-shadow: 0 1px 6px rgba(0,0,0,.06); }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    input[type="text"], input[type="password"], select { padding: 8px; border-radius: 6px; border: 1px solid #d9d9d9; }
+    button { padding: 8px 12px; border-radius: 6px; border: 1px solid #d9d9d9; background: #fff; cursor: pointer; }
+    button.primary { background: #2f6fed; color: #fff; border-color: #2f6fed; }
+    button.danger { background: #dc3545; color: #fff; border-color: #dc3545; }
+    .muted { color: #666; font-size: 12px; }
+    .groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+    .group-title { font-weight: 700; margin-bottom: 8px; }
+    .paper-line { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 8px 10px; border: 1px solid #eee; border-radius: 8px; margin-bottom: 8px; background: #fafafa; }
+    .paper-meta { display: flex; flex-direction: column; gap: 2px; }
+    .paper-actions { display: flex; gap: 8px; }
+    .chip { display: inline-block; padding: 3px 8px; border-radius: 999px; background: #eef2ff; color: #3b5bff; font-size: 12px; margin-right: 6px; }
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .modal { width: 520px; background: #fff; border-radius: 12px; padding: 16px; }
+    .modal h3 { margin: 0 0 12px; }
+    .divider { height: 1px; background: #eee; margin: 12px 0; }
+    .checkboxes { display: flex; flex-wrap: wrap; gap: 10px; }
+    label { display: flex; gap: 6px; align-items: center; }
+  </style>
+</head>
+<body>
+<div class="container" id="root"></div>
+
+<script type="text/babel">
+  const { useEffect, useMemo, useState } = React;
+
+  const CATEGORY_LIST = ["CF Based", "Graph Based", "Context Based", "Hybrid Based", "LLM Based"];
+  const apiBase = window.location.origin; // 后端与前端同源（静态页面由后端托管）
+
+  async function apiJson(path, options) {
+    const res = await fetch(apiBase + path, options);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const msg = data.message || ("Request failed: " + res.status);
+      throw new Error(msg);
+    }
+    return data;
+  }
+
+  function App() {
+    const [loginForm, setLoginForm] = useState({ username: "admin", password: "admin123" });
+    const [loggedIn, setLoggedIn] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState("");
+
+    const [papers, setPapers] = useState([]);
+    const [keyword, setKeyword] = useState("");
+    const [category, setCategory] = useState("全部");
+
+    const [file, setFile] = useState(null);
+
+    const [editPaper, setEditPaper] = useState(null); // paper object
+    const [editForm, setEditForm] = useState({ categories: [], code_url: "" });
+
+    const filteredCategory = category === "全部" ? "" : category;
+
+    useEffect(() => {
+      if (!loggedIn) return;
+      loadPapers();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loggedIn]);
+
+    async function loadPapers() {
+      setBusy(true);
+      setError("");
+      try {
+        const params = new URLSearchParams();
+        if (keyword.trim()) params.set("keyword", keyword.trim());
+        if (filteredCategory) params.set("category", filteredCategory);
+        const data = await apiJson("/api/papers" + (params.toString() ? ("?" + params.toString()) : ""));
+        setPapers(data || []);
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function handleLogin() {
+      setBusy(true);
+      setError("");
+      try {
+        await apiJson("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(loginForm),
+        });
+        setLoggedIn(true);
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function handleUpload() {
+      if (!file) {
+        setError("请选择 PDF 文件");
+        return;
+      }
+      setBusy(true);
+      setError("");
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        const resp = await fetch(apiBase + "/api/papers/upload", { method: "POST", body: fd });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.message || "upload failed");
+
+        // 上传完成后刷新列表（最稳）
+        await loadPapers();
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setBusy(false);
+        setFile(null);
+      }
+    }
+
+    async function handleDelete(paperId) {
+      if (!confirm("确认删除该论文记录？")) return;
+      setBusy(true);
+      setError("");
+      try {
+        await apiJson("/api/papers/" + paperId, { method: "DELETE" });
+        await loadPapers();
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    function openEdit(paper) {
+      setEditPaper(paper);
+      setEditForm({
+        categories: paper.categories || [],
+        code_url: paper.code_url || "",
+      });
+    }
+
+    async function handleSaveEdit() {
+      if (!editPaper) return;
+      setBusy(true);
+      setError("");
+      try {
+        const body = {
+          categories: editForm.categories,
+          code_url: editForm.code_url,
+        };
+        await apiJson("/api/papers/" + editPaper.id, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        setEditPaper(null);
+        await loadPapers();
+      } catch (e) {
+        setError(e.message);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    const grouped = useMemo(() => {
+      const map = new Map();
+      CATEGORY_LIST.forEach(c => map.set(c, []));
+      for (const p of papers) {
+        const cats = p.categories || [];
+        for (const c of cats) {
+          if (map.has(c)) map.get(c).push(p);
+        }
+      }
+      // 稍微去重：同一 paper 在组内不需要重复同分类
+      for (const [k, arr] of map.entries()) {
+        const seen = new Set();
+        const next = [];
+        for (const p of arr) {
+          const id = p.id;
+          if (!seen.has(id)) {
+            seen.add(id);
+            next.push(p);
+          }
+        }
+        map.set(k, next);
+      }
+      return map;
+    }, [papers]);
+
+    if (!loggedIn) {
+      return (
+        <div>
+          <div className="card">
+            <h2 style={{ marginTop: 0 }}>登录</h2>
+            <div className="row">
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <div className="muted">用户名</div>
+                <input type="text" value={loginForm.username} onChange={(e)=>setLoginForm({...loginForm, username: e.target.value})} />
+              </div>
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <div className="muted">密码</div>
+                <input type="password" value={loginForm.password} onChange={(e)=>setLoginForm({...loginForm, password: e.target.value})} />
+              </div>
+            </div>
+            <div style={{ marginTop: 12 }} className="row">
+              <button className="primary" onClick={handleLogin} disabled={busy}>
+                {busy ? "登录中..." : "登录"}
+              </button>
+              <div className="muted">
+                默认账号：<code>admin</code> / <code>admin123</code>
+              </div>
+            </div>
+            {error ? <div style={{ marginTop: 12, color: "#dc3545" }}>{error}</div> : null}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div>
+        <div className="card">
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <div>
+              <h2 style={{ margin: 0 }}>论文管理</h2>
+              <div className="muted">上传 PDF 会自动抽取 Abstract/Introduction 并进行多标签分类</div>
+            </div>
+            <button onClick={() => { setLoggedIn(false); setPapers([]); }} disabled={busy}>退出</button>
+          </div>
+
+          <div className="divider"></div>
+
+          <div className="row">
+            <input
+              type="file"
+              accept="application/pdf"
+              onChange={(e) => setFile(e.target.files && e.target.files[0] ? e.target.files[0] : null)}
+            />
+            <button className="primary" onClick={handleUpload} disabled={busy || !file}>
+              {busy ? "上传中..." : "上传并分类"}
+            </button>
+          </div>
+          {error ? <div style={{ marginTop: 12, color: "#dc3545" }}>{error}</div> : null}
+
+          <div className="divider"></div>
+
+          <div className="row">
+            <div style={{ flex: 1, minWidth: 260 }}>
+              <div className="muted">搜索关键词（文件名）</div>
+              <input type="text" value={keyword} onChange={(e)=>setKeyword(e.target.value)} placeholder="例如：GNN" />
+            </div>
+            <div style={{ width: 240 }}>
+              <div className="muted">按分类过滤</div>
+              <select value={category} onChange={(e)=>setCategory(e.target.value)}>
+                <option value="全部">全部</option>
+                {CATEGORY_LIST.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <button onClick={loadPapers} disabled={busy}>搜索</button>
+          </div>
+        </div>
+
+        <div className="groups">
+          {CATEGORY_LIST.map(c => (
+            <div key={c} className="card" style={{ marginBottom: 0 }}>
+              <div className="group-title">{c}</div>
+              {(grouped.get(c) || []).length === 0 ? (
+                <div className="muted">暂无论文</div>
+              ) : null}
+              {(grouped.get(c) || []).map(p => (
+                <div key={p.id} className="paper-line">
+                  <div className="paper-meta" style={{ minWidth: 180 }}>
+                    <a href={p.file_url || p.fileUrl} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
+                      <div style={{ fontWeight: 700 }}>{p.title}</div>
+                    </a>
+                    <div className="muted">
+                      多标签：
+                      {(p.categories || []).slice(0, 5).map(cc => <span key={cc} className="chip">{cc}</span>)}
+                    </div>
+                  </div>
+                  <div style={{ flex: 1 }} />
+                  <div className="paper-actions">
+                    {(p.code_url || p.codeUrl) ? (
+                      <a href={p.code_url || p.codeUrl} target="_blank" rel="noreferrer" style={{ marginRight: 6 }}>
+                        代码链接
+                      </a>
+                    ) : (
+                      <span className="muted">未填写 code_url</span>
+                    )}
+                    <button onClick={() => openEdit(p)} disabled={busy}>编辑</button>
+                    <button className="danger" onClick={() => handleDelete(p.id)} disabled={busy}>删除</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+
+        {editPaper ? (
+          <div className="modal-backdrop" onMouseDown={(e)=>{ if (e.target === e.currentTarget) setEditPaper(null); }}>
+            <div className="modal">
+              <h3>编辑论文</h3>
+              <div className="muted">ID: {editPaper.id} / 标题：{editPaper.title}</div>
+              <div className="divider"></div>
+              <div className="muted" style={{ marginBottom: 6 }}>分类（多选）</div>
+              <div className="checkboxes">
+                {CATEGORY_LIST.map(c => (
+                  <label key={c}>
+                    <input
+                      type="checkbox"
+                      checked={(editForm.categories || []).includes(c)}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        let next = new Set(editForm.categories || []);
+                        if (checked) next.add(c); else next.delete(c);
+                        setEditForm({ ...editForm, categories: Array.from(next) });
+                      }}
+                    />
+                    <span>{c}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="divider"></div>
+              <div className="muted" style={{ marginBottom: 6 }}>code_url</div>
+              <input
+                type="text"
+                value={editForm.code_url || ""}
+                onChange={(e) => setEditForm({ ...editForm, code_url: e.target.value })}
+                style={{ width: "100%" }}
+                placeholder="例如：https://github.com/xxx/xxx"
+              />
+
+              <div className="divider"></div>
+              <div className="row" style={{ justifyContent: "flex-end" }}>
+                <button onClick={() => setEditPaper(null)} disabled={busy}>取消</button>
+                <button className="primary" onClick={handleSaveEdit} disabled={busy}>保存</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  const root = ReactDOM.createRoot(document.getElementById("root"));
+  root.render(<App />);
+</script>
+</body>
+</html>
+
