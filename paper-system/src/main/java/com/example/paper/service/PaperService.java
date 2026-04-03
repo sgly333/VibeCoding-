@@ -104,8 +104,10 @@ public class PaperService {
 
         paper.setCodeUrl(req.getCodeUrl());
 
-        List<String> categories = normalizeCategories(req.getCategories());
+        List<String> categories = normalizeCategories(req == null ? null : req.getCategories());
+        // 先清空并 flush，确保旧关联先删除，再重建新关联，避免复合主键冲突
         paper.getPaperCategories().clear();
+        paperRepository.flush();
         attachCategories(paper, categories);
 
         Paper saved = paperRepository.save(paper);

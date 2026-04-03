@@ -1,12 +1,9 @@
 package com.example.paper.dto;
 
-import jakarta.validation.constraints.NotNull;
-
 import java.util.List;
 
 public class PaperUpdateRequest {
 
-    @NotNull
     private List<String> categories;
 
     private String codeUrl;

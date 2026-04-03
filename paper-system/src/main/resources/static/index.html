@@ -713,8 +713,9 @@
       setBusy(true);
       setError("");
       try {
+        const safeCategories = Array.isArray(editForm.categories) ? editForm.categories : [];
         const body = {
-          categories: editForm.categories,
+          categories: safeCategories,
           code_url: editForm.code_url,
         };
         await apiJson("/api/papers/" + editPaper.id, {
